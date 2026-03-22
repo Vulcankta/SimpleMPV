@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/sort_date_desc"
+        android:title="最新优先" />
+    <item
+        android:id="@+id/sort_date_asc"
+        android:title="最早优先" />
+    <item
+        android:id="@+id/sort_name_asc"
+        android:title="名称 (A-Z)" />
+    <item
+        android:id="@+id/sort_name_desc"
+        android:title="名称 (Z-A)" />
+    <item
+        android:id="@+id/sort_size_desc"
+        android:title="大小 (大→小)" />
+    <item
+        android:id="@+id/sort_size_asc"
+        android:title="大小 (小→大)" />
+    <item
+        android:id="@+id/sort_duration_desc"
+        android:title="时长 (长→短)" />
+    <item
+        android:id="@+id/sort_duration_asc"
+        android:title="时长 (短→长)" />
+</menu>

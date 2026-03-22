@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SimpleMPV</string>
+    <string name="no_videos">No videos found</string>
+    <string name="permission_denied">Permission denied</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="previous">Previous</string>
+    <string name="next">Next</string>
+    <string name="video_list">Video List</string>
+    <string name="decoding">Decoding</string>
+    <string name="decoding_software">Software</string>
+    <string name="decoding_hardware">Hardware</string>
+    <string name="hw_decoding_disabled">Hardware decoding disabled</string>
+    <string name="hw_decoding_enabled">Hardware decoding enabled</string>
+</resources>
