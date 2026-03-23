@@ -760,7 +760,9 @@ class PlayerActivity : AppCompatActivity(),
             if (::playerController.isInitialized) {
                 val videoInfo = playerController.getVideoInfo()
                 if (videoInfo != null) {
-                    adjustSurfaceSize(videoInfo.width, videoInfo.height)
+                    surfaceView.post {
+                        adjustSurfaceSize(videoInfo.width, videoInfo.height)
+                    }
                 }
             }
         }
