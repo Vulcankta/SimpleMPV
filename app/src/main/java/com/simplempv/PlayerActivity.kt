@@ -120,6 +120,7 @@ class PlayerActivity : AppCompatActivity(),
     private var wasConfigurationChange = false
     private var originalContentUri: Uri? = null
     private var isBottomSheetExpanded = false
+    private var pendingSeekPosition: Long = -1
     
     private val surfaceCallback = object : SurfaceHolder.Callback {
         override fun surfaceCreated(holder: SurfaceHolder) {
@@ -139,17 +140,30 @@ class PlayerActivity : AppCompatActivity(),
                     val fdUri = playerController.reopenFd()
                     android.util.Log.d("PlayerActivity", "Reopened fdUri: $fdUri")
                     
+                    if (fdUri != null) {
+                        dev.jdtech.mpv.MPVLib.command(arrayOf("loadfile", fdUri.toString()))
+                        pendingSeekPosition = savedPosition
+                    }
+                    
                 } catch (e: Exception) {
                     android.util.Log.e("PlayerActivity", "Failed to reattach surface", e)
                 }
                 
                 surfaceView.postDelayed({
-                    if (savedPosition > 0) {
-                        playerController.seekTo(savedPosition)
+                    if (pendingSeekPosition > 0) {
+                        playerController.seekTo(pendingSeekPosition)
+                        surfaceView.postDelayed({
+                            val actualPosition = playerController.getCurrentTime()
+                            if (kotlin.math.abs(actualPosition - pendingSeekPosition) > 1000) {
+                                android.util.Log.d("PlayerActivity", "Seek may have failed, retrying. Expected: $pendingSeekPosition, Actual: $actualPosition")
+                                playerController.seekTo(pendingSeekPosition)
+                            }
+                            pendingSeekPosition = -1
+                        }, 500)
                     }
                     playerController.play()
                     android.util.Log.d("PlayerActivity", "Video resumed at position: ${playerController.getCurrentTime()}")
-                }, 500)
+                }, 1000)
                 
                 wasInBackground = false
                 wasConfigurationChange = false
@@ -294,7 +308,6 @@ class PlayerActivity : AppCompatActivity(),
         const val KEY_HARDWARE_DECODING = "key_hardware_decoding"
         const val KEY_ROTATION_LOCKED = "key_rotation_locked"
         const val KEY_SLEEP_TIMER_MINUTES = "key_sleep_timer_minutes"
-        const val KEY_WAS_CONFIG_CHANGE = "key_was_config_change"
         const val KEY_SAVED_POSITION = "key_saved_position"
         const val KEY_ORIGINAL_URI = "key_original_uri"
         const val KEY_BOTTOM_SHEET_EXPANDED = "key_bottom_sheet_expanded"
@@ -944,11 +957,12 @@ class PlayerActivity : AppCompatActivity(),
 
     override fun onStop() {
         super.onStop()
-        wasConfigurationChange = isChangingConfigurations
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
+        
+        wasConfigurationChange = isChangingConfigurations
         
         outState.putString(EXTRA_VIDEO_PATH, intent.getStringExtra(EXTRA_VIDEO_PATH))
         outState.putString(EXTRA_VIDEO_URI, intent.getStringExtra(EXTRA_VIDEO_URI))
@@ -984,6 +998,11 @@ class PlayerActivity : AppCompatActivity(),
         }
         
         isBottomSheetExpanded = state.getBoolean(KEY_BOTTOM_SHEET_EXPANDED, false)
+        
+        if (isBottomSheetExpanded) {
+            bottomSheetControlsBinding.root.visibility = View.VISIBLE
+            bottomSheetControlsBinding.root.translationY = 0f
+        }
         
         if (isRotationLocked) {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED

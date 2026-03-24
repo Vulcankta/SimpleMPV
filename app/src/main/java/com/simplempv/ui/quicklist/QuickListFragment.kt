@@ -77,11 +77,16 @@ class QuickListFragment : Fragment() {
             }
             
             view?.post {
-                if (::recyclerView.isInitialized && ::adapter.isInitialized) {
+                fun tryRestoreScroll() {
+                    if (!::recyclerView.isInitialized || !::adapter.isInitialized) {
+                        view?.postDelayed({ tryRestoreScroll() }, 100)
+                        return
+                    }
                     if (scrollPosition < adapter.itemCount) {
                         recyclerView.scrollToPosition(scrollPosition)
                     }
                 }
+                tryRestoreScroll()
             }
         }
     }
