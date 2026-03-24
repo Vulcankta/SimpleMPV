@@ -36,6 +36,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.slidingpanelayout.widget.SlidingPaneLayout
 import com.simplempv.databinding.ActivityPlayerBinding
+import com.simplempv.databinding.BottomSheetControlsBinding
+import com.simplempv.databinding.PipMiniControlsBinding
 import com.simplempv.model.Video
 import com.simplempv.player.MpvPlayerController
 import com.simplempv.player.PlaybackStateManager
@@ -107,11 +109,17 @@ class PlayerActivity : AppCompatActivity(),
     private lateinit var buttonLock: ImageButton
     private lateinit var buttonSleepTimer: ImageButton
     private lateinit var buttonBookmark: ImageButton
+    private lateinit var buttonMore: ImageButton
     private lateinit var sleepTimerManager: SleepTimerManager
+    private lateinit var bottomSheetControlsBinding: BottomSheetControlsBinding
+    private lateinit var pipControlsBinding: PipMiniControlsBinding
     private var sleepTimerMinutes = 0
 
     private var wasInBackground = false
     private var savedPosition: Long = 0
+    private var wasConfigurationChange = false
+    private var originalContentUri: Uri? = null
+    private var isBottomSheetExpanded = false
     
     private val surfaceCallback = object : SurfaceHolder.Callback {
         override fun surfaceCreated(holder: SurfaceHolder) {
@@ -119,14 +127,18 @@ class PlayerActivity : AppCompatActivity(),
             
             if (!::playerController.isInitialized || !::progressUpdater.isInitialized) return
 
-            if (wasInBackground) {
-                android.util.Log.d("PlayerActivity", "Reattaching surface after background")
+            if (wasInBackground || wasConfigurationChange) {
+                android.util.Log.d("PlayerActivity", "Reattaching surface after background or config change: wasInBackground=$wasInBackground, wasConfigChange=$wasConfigurationChange")
                 
                 try {
                     dev.jdtech.mpv.MPVLib.attachSurface(holder.surface)
                     dev.jdtech.mpv.MPVLib.setOptionString("android-surface-size", "${holder.surfaceFrame.width()}x${holder.surfaceFrame.height()}")
                     dev.jdtech.mpv.MPVLib.setOptionString("force-window", "yes")
                     dev.jdtech.mpv.MPVLib.setPropertyString("vo", "gpu")
+                    
+                    val fdUri = playerController.reopenFd()
+                    android.util.Log.d("PlayerActivity", "Reopened fdUri: $fdUri")
+                    
                 } catch (e: Exception) {
                     android.util.Log.e("PlayerActivity", "Failed to reattach surface", e)
                 }
@@ -140,6 +152,7 @@ class PlayerActivity : AppCompatActivity(),
                 }, 500)
                 
                 wasInBackground = false
+                wasConfigurationChange = false
             } else {
                 pendingFdUri?.let { uri ->
                     playerController.attachAndPlay(uri, holder, surfaceView, playbackStateManager.getCurrentVideoKey())
@@ -276,6 +289,15 @@ class PlayerActivity : AppCompatActivity(),
         const val ACTION_PAUSE = "com.simplempv.ACTION_PAUSE"
         const val ACTION_PREVIOUS = "com.simplempv.ACTION_PREVIOUS"
         const val ACTION_NEXT = "com.simplempv.ACTION_NEXT"
+        
+        const val KEY_PLAYBACK_SPEED = "key_playback_speed"
+        const val KEY_HARDWARE_DECODING = "key_hardware_decoding"
+        const val KEY_ROTATION_LOCKED = "key_rotation_locked"
+        const val KEY_SLEEP_TIMER_MINUTES = "key_sleep_timer_minutes"
+        const val KEY_WAS_CONFIG_CHANGE = "key_was_config_change"
+        const val KEY_SAVED_POSITION = "key_saved_position"
+        const val KEY_ORIGINAL_URI = "key_original_uri"
+        const val KEY_BOTTOM_SHEET_EXPANDED = "key_bottom_sheet_expanded"
     }
 
     private val serviceConnection = object : ServiceConnection {
@@ -335,6 +357,34 @@ class PlayerActivity : AppCompatActivity(),
             buttonLock.setImageResource(R.drawable.ic_unlock)
             showFeedback("屏幕已解锁")
         }
+    }
+
+    private fun toggleBottomSheet() {
+        if (isBottomSheetExpanded) {
+            hideBottomSheet()
+        } else {
+            showBottomSheet()
+        }
+    }
+
+    private fun showBottomSheet() {
+        bottomSheetControlsBinding.root.visibility = View.VISIBLE
+        bottomSheetControlsBinding.root.animate()
+            .translationY(0f)
+            .setDuration(300)
+            .start()
+        isBottomSheetExpanded = true
+    }
+
+    private fun hideBottomSheet() {
+        bottomSheetControlsBinding.root.animate()
+            .translationY(bottomSheetControlsBinding.root.height.toFloat())
+            .setDuration(300)
+            .withEndAction {
+                bottomSheetControlsBinding.root.visibility = View.GONE
+            }
+            .start()
+        isBottomSheetExpanded = false
     }
 
     private fun showFeedback(message: String) {
@@ -403,6 +453,10 @@ class PlayerActivity : AppCompatActivity(),
             updatePlayPauseButton = { updatePlayPauseButton() }
         )
 
+        savedInstanceState?.let { state ->
+            restoreInstanceState(state)
+        }
+
         if (!hasVideoPermission()) {
             Toast.makeText(this, "Permission needed to access videos", Toast.LENGTH_LONG).show()
             if (serviceBound) {
@@ -441,19 +495,29 @@ class PlayerActivity : AppCompatActivity(),
         buttonPrevious = binding.buttonPrevious
         buttonNext = binding.buttonNext
         buttonOpenPanel = binding.buttonOpenPanel
-        buttonSpeed = binding.buttonSpeed
-        buttonSnapshot = binding.buttonSnapshot
+        buttonSpeed = binding.root.findViewById(R.id.buttonSpeed)
+        buttonSnapshot = binding.root.findViewById(R.id.buttonSnapshot)
         buttonLock = binding.buttonLock
-        buttonInfo = binding.buttonInfo
+        buttonInfo = binding.root.findViewById(R.id.buttonInfo)
         buttonInfo.setOnClickListener { showVideoInfo() }
-        buttonDecoding = binding.buttonDecoding
+        buttonDecoding = binding.root.findViewById(R.id.buttonDecoding)
         buttonDecoding.setOnClickListener { showDecodingMenu() }
-        buttonSleepTimer = binding.buttonSleepTimer
+        buttonSleepTimer = binding.root.findViewById(R.id.buttonSleepTimer)
         buttonSleepTimer.setOnClickListener { showSleepTimerMenu() }
-        buttonBookmark = binding.buttonBookmark
+        buttonBookmark = binding.root.findViewById(R.id.buttonBookmark)
         buttonBookmark.setOnClickListener { showBookmarksMenu() }
         textViewDebug = binding.textViewDebug
         slidingPaneLayout = binding.slidingPaneLayout
+
+        bottomSheetControlsBinding = binding.bottomSheetControls
+        pipControlsBinding = binding.pipControlsLayout
+        buttonMore = binding.buttonMore
+
+        buttonMore.setOnClickListener { toggleBottomSheet() }
+
+        pipControlsBinding.buttonPipPlayPause.setOnClickListener {
+            togglePlayPause()
+        }
 
         quickListFragment = supportFragmentManager
             .findFragmentById(R.id.quickListContainer) as QuickListFragment
@@ -473,6 +537,36 @@ class PlayerActivity : AppCompatActivity(),
         buttonSpeed.setOnClickListener { showSpeedMenu() }
         buttonLock.setOnClickListener { toggleRotationLock() }
         buttonSnapshot.setOnClickListener { takeSnapshot() }
+
+        bottomSheetControlsBinding.buttonSpeed.setOnClickListener {
+            hideBottomSheet()
+            showSpeedMenu()
+        }
+
+        bottomSheetControlsBinding.buttonDecoding.setOnClickListener {
+            hideBottomSheet()
+            showDecodingMenu()
+        }
+
+        bottomSheetControlsBinding.buttonSnapshot.setOnClickListener {
+            hideBottomSheet()
+            takeSnapshot()
+        }
+
+        bottomSheetControlsBinding.buttonSleepTimer.setOnClickListener {
+            hideBottomSheet()
+            showSleepTimerMenu()
+        }
+
+        bottomSheetControlsBinding.buttonBookmark.setOnClickListener {
+            hideBottomSheet()
+            showBookmarksMenu()
+        }
+
+        bottomSheetControlsBinding.buttonInfo.setOnClickListener {
+            hideBottomSheet()
+            showVideoInfo()
+        }
 
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -730,6 +824,12 @@ class PlayerActivity : AppCompatActivity(),
 
         if (isInPictureInPictureMode) {
             binding.controlsLayout.visibility = View.GONE
+            bottomSheetControlsBinding.root.visibility = View.GONE
+            
+            pipControlsBinding.root.visibility = View.VISIBLE
+            
+            pipControlsBinding.buttonPipPlayPause.setImageResource(if (playerController.isPlaying()) R.drawable.ic_pause else R.drawable.ic_play)
+            
             binding.textViewSeekFeedback.visibility = View.GONE
             binding.textViewDebug.visibility = View.GONE
             
@@ -751,6 +851,7 @@ class PlayerActivity : AppCompatActivity(),
             }, 100)
         } else {
             binding.controlsLayout.visibility = View.VISIBLE
+            pipControlsBinding.root.visibility = View.GONE
             
             val params = binding.surfaceView.layoutParams
             params.width = ViewGroup.LayoutParams.MATCH_PARENT
@@ -839,6 +940,57 @@ class PlayerActivity : AppCompatActivity(),
             serviceBound = false
         }
         sleepTimerManager.cancel()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        wasConfigurationChange = isChangingConfigurations
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        
+        outState.putString(EXTRA_VIDEO_PATH, intent.getStringExtra(EXTRA_VIDEO_PATH))
+        outState.putString(EXTRA_VIDEO_URI, intent.getStringExtra(EXTRA_VIDEO_URI))
+        outState.putInt(EXTRA_VIDEO_POSITION, currentPosition)
+        
+        outState.putFloat(KEY_PLAYBACK_SPEED, playerController.getPlaybackSpeed())
+        outState.putBoolean(KEY_HARDWARE_DECODING, playerController.isUsingHardwareDecoding())
+        
+        outState.putBoolean(KEY_ROTATION_LOCKED, isRotationLocked)
+        outState.putInt(KEY_SLEEP_TIMER_MINUTES, sleepTimerMinutes)
+        
+        outState.putLong(KEY_SAVED_POSITION, savedPosition)
+        
+        outState.putString(KEY_ORIGINAL_URI, originalContentUri?.toString())
+        
+        outState.putBoolean(KEY_BOTTOM_SHEET_EXPANDED, isBottomSheetExpanded)
+    }
+
+    private fun restoreInstanceState(state: Bundle) {
+        val speed = state.getFloat(KEY_PLAYBACK_SPEED, 1.0f)
+        playerController.setPlaybackSpeed(speed)
+        
+        val hwDecoding = state.getBoolean(KEY_HARDWARE_DECODING, false)
+        playerController.setHardwareDecoding(hwDecoding)
+        
+        isRotationLocked = state.getBoolean(KEY_ROTATION_LOCKED, false)
+        sleepTimerMinutes = state.getInt(KEY_SLEEP_TIMER_MINUTES, 0)
+        
+        savedPosition = state.getLong(KEY_SAVED_POSITION, 0)
+        
+        state.getString(KEY_ORIGINAL_URI)?.let {
+            originalContentUri = Uri.parse(it)
+        }
+        
+        isBottomSheetExpanded = state.getBoolean(KEY_BOTTOM_SHEET_EXPANDED, false)
+        
+        if (isRotationLocked) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+            if (::buttonLock.isInitialized) {
+                buttonLock.setImageResource(R.drawable.ic_lock)
+            }
+        }
     }
 
     private fun showSpeedMenu() {

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_bottom_sheet"
+    android:padding="@dimen/controls_padding"
+    android:translationY="400dp">
+
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/bg_drag_handle" />
+
+    <GridLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:columnCount="3"
+        android:rowCount="2"
+        android:alignmentMode="alignBounds"
+        android:useDefaultMargins="true">
+
+        <ImageButton
+            android:id="@+id/buttonSpeed"
+            android:layout_width="@dimen/button_size_secondary"
+            android:layout_height="@dimen/button_size_secondary"
+            android:layout_columnWeight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_speed"
+            app:tint="@android:color/white"
+            android:contentDescription="Playback speed" />
+
+        <ImageButton
+            android:id="@+id/buttonDecoding"
+            android:layout_width="@dimen/button_size_secondary"
+            android:layout_height="@dimen/button_size_secondary"
+            android:layout_columnWeight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_decoding"
+            app:tint="@android:color/white"
+            android:contentDescription="Decoding mode" />
+
+        <ImageButton
+            android:id="@+id/buttonSnapshot"
+            android:layout_width="@dimen/button_size_secondary"
+            android:layout_height="@dimen/button_size_secondary"
+            android:layout_columnWeight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_screenshot"
+            app:tint="@android:color/white"
+            android:contentDescription="Take screenshot" />
+
+        <ImageButton
+            android:id="@+id/buttonSleepTimer"
+            android:layout_width="@dimen/button_size_secondary"
+            android:layout_height="@dimen/button_size_secondary"
+            android:layout_columnWeight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_timer"
+            app:tint="@android:color/white"
+            android:contentDescription="Sleep timer" />
+
+        <ImageButton
+            android:id="@+id/buttonBookmark"
+            android:layout_width="@dimen/button_size_secondary"
+            android:layout_height="@dimen/button_size_secondary"
+            android:layout_columnWeight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_bookmark"
+            app:tint="@android:color/white"
+            android:contentDescription="Bookmarks" />
+
+        <ImageButton
+            android:id="@+id/buttonInfo"
+            android:layout_width="@dimen/button_size_secondary"
+            android:layout_height="@dimen/button_size_secondary"
+            android:layout_columnWeight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_info"
+            app:tint="@android:color/white"
+            android:contentDescription="Video info" />
+
+    </GridLayout>
+
+</LinearLayout>

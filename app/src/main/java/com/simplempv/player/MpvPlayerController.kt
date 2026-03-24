@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -27,6 +28,15 @@ data class VideoInfo(
     val frameRate: Int,
     val codec: String,
     val bitrate: Int
+)
+
+data class PlayerState(
+    val currentVideoKey: String?,
+    val currentSpeed: Float,
+    val useHardwareDecoding: Boolean,
+    val savedPositions: Map<String, Long>,
+    val originalContentUri: String?,
+    val videoDuration: Long
 )
 
 /**
@@ -50,6 +60,8 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
     private var currentSpeed: Float = 1.0f
     private var savedPositions: MutableMap<String, Long> = mutableMapOf()
     private var currentFd: Int = -1
+    private var parcelFileDescriptor: ParcelFileDescriptor? = null
+    private var originalContentUri: Uri? = null
     private var useHardwareDecoding: Boolean = false // Auto-detect: false = use software decoding
     private var seekErrorCount: Int = 0
     private val seekErrorThreshold: Int = 2 // Switch to software after 2 seek errors
@@ -370,10 +382,11 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
      * @return fd:// URI or null if failed
      */
     fun openFdUri(contentUri: Uri): Uri? {
+        originalContentUri = contentUri
         return try {
-            val parcelFileDescriptor = context.contentResolver.openFileDescriptor(contentUri, "r")
+            parcelFileDescriptor = context.contentResolver.openFileDescriptor(contentUri, "r")
             if (parcelFileDescriptor != null) {
-                currentFd = parcelFileDescriptor.fd
+                currentFd = parcelFileDescriptor!!.fd
                 Uri.parse("fd://$currentFd")
             } else {
                 null
@@ -397,14 +410,17 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
     fun closeFd() {
         if (currentFd != -1) {
             try {
-                java.io.FileDescriptor().apply {
-                    // Close via ParcelFileDescriptor would be better handled externally
-                }
+                parcelFileDescriptor?.close()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+            parcelFileDescriptor = null
             currentFd = -1
         }
+    }
+
+    fun reopenFd(): Uri? {
+        return originalContentUri?.let { openFdUri(it) }
     }
 
     /**
@@ -640,6 +656,28 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
 
     override fun eventProperty(property: String, value: String) {
         // Not used
+    }
+
+    fun saveState(): PlayerState {
+        return PlayerState(
+            currentVideoKey = currentVideoKey,
+            currentSpeed = currentSpeed,
+            useHardwareDecoding = useHardwareDecoding,
+            savedPositions = savedPositions.toMap(),
+            originalContentUri = originalContentUri?.toString(),
+            videoDuration = videoDuration
+        )
+    }
+
+    fun restoreState(state: PlayerState) {
+        currentVideoKey = state.currentVideoKey
+        currentSpeed = state.currentSpeed
+        useHardwareDecoding = state.useHardwareDecoding
+        savedPositions = state.savedPositions.toMutableMap()
+        state.originalContentUri?.let {
+            originalContentUri = Uri.parse(it)
+        }
+        videoDuration = state.videoDuration
     }
 
     companion object {

@@ -53,6 +53,39 @@ class QuickListFragment : Fragment() {
         setupSearch()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (::editTextSearch.isInitialized) {
+            outState.putString(KEY_SEARCH_TEXT, editTextSearch.text?.toString())
+        }
+        if (::recyclerView.isInitialized) {
+            val layoutManager = recyclerView.layoutManager as? LinearLayoutManager
+            layoutManager?.let {
+                outState.putInt(KEY_SCROLL_POSITION, it.findFirstVisibleItemPosition())
+            }
+        }
+    }
+
+    override fun onViewStateRestored(savedInstanceState: Bundle?) {
+        super.onViewStateRestored(savedInstanceState)
+        savedInstanceState?.let { state ->
+            val searchText = state.getString(KEY_SEARCH_TEXT, "")
+            val scrollPosition = state.getInt(KEY_SCROLL_POSITION, 0)
+            
+            if (searchText.isNotEmpty() && ::editTextSearch.isInitialized) {
+                editTextSearch.setText(searchText)
+            }
+            
+            view?.post {
+                if (::recyclerView.isInitialized && ::adapter.isInitialized) {
+                    if (scrollPosition < adapter.itemCount) {
+                        recyclerView.scrollToPosition(scrollPosition)
+                    }
+                }
+            }
+        }
+    }
+
     override fun onAttach(context: Context) {
         super.onAttach(context)
         listener = context as? OnVideoSelectedListener
@@ -151,6 +184,8 @@ class QuickListFragment : Fragment() {
 
     companion object {
         const val TAG = "QuickListFragment"
+        private const val KEY_SEARCH_TEXT = "key_search_text"
+        private const val KEY_SCROLL_POSITION = "key_scroll_position"
 
         fun newInstance(): QuickListFragment {
             return QuickListFragment()

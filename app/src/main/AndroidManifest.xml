@@ -29,9 +29,10 @@
 
         <activity
             android:name=".PlayerActivity"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
+            android:screenOrientation="fullUser"
             android:supportsPictureInPicture="true"
             android:launchMode="singleTask"
+            android:configChanges="keyboard|keyboardHidden"
             android:theme="@style/Theme.SimpleMPV.FullScreen" />
 
         <service

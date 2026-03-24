@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="button_size_primary">64dp</dimen>
+    <dimen name="button_size_secondary">48dp</dimen>
+    <dimen name="button_size_small">48dp</dimen>
+    
+    <dimen name="controls_padding">16dp</dimen>
+    <dimen name="controls_margin_vertical">4dp</dimen>
+    
+    <dimen name="quick_list_width">300dp</dimen>
+</resources>
