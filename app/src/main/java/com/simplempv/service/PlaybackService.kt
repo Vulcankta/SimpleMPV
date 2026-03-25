@@ -93,27 +93,35 @@ class PlaybackService : Service() {
 
             setCallback(object : MediaSession.Callback() {
                 override fun onPlay() {
-                    this@PlaybackService.play()
+                    play()
                 }
 
                 override fun onPause() {
-                    this@PlaybackService.pause()
+                    pause()
                 }
 
                 override fun onStop() {
-                    this@PlaybackService.stop()
+                    stop()
                 }
 
                 override fun onSkipToNext() {
-                    this@PlaybackService.onSkipToNext?.invoke()
+                    onSkipToNext?.invoke()
                 }
 
                 override fun onSkipToPrevious() {
-                    this@PlaybackService.onSkipToPrevious?.invoke()
+                    onSkipToPrevious?.invoke()
                 }
 
                 override fun onSeekTo(pos: Long) {
-                    this@PlaybackService.onSeekTo?.invoke(pos)
+                    onSeekTo?.invoke(pos)
+                }
+
+                override fun onFastForward() {
+                    onSkipToNext?.invoke()
+                }
+
+                override fun onRewind() {
+                    onSkipToPrevious?.invoke()
                 }
             })
 
@@ -180,10 +188,13 @@ class PlaybackService : Service() {
                 .setActions(
                     PlaybackState.ACTION_PLAY or
                     PlaybackState.ACTION_PAUSE or
+                    PlaybackState.ACTION_PLAY_PAUSE or
                     PlaybackState.ACTION_STOP or
                     PlaybackState.ACTION_SEEK_TO or
                     PlaybackState.ACTION_SKIP_TO_NEXT or
-                    PlaybackState.ACTION_SKIP_TO_PREVIOUS
+                    PlaybackState.ACTION_SKIP_TO_PREVIOUS or
+                    PlaybackState.ACTION_FAST_FORWARD or
+                    PlaybackState.ACTION_REWIND
                 )
                 .build()
         )

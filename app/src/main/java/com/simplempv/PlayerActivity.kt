@@ -37,7 +37,6 @@ import androidx.core.content.ContextCompat
 import androidx.slidingpanelayout.widget.SlidingPaneLayout
 import com.simplempv.databinding.ActivityPlayerBinding
 import com.simplempv.databinding.BottomSheetControlsBinding
-import com.simplempv.databinding.PipMiniControlsBinding
 import com.simplempv.model.Video
 import com.simplempv.player.MpvPlayerController
 import com.simplempv.player.PlaybackStateManager
@@ -112,7 +111,6 @@ class PlayerActivity : AppCompatActivity(),
     private lateinit var buttonMore: ImageButton
     private lateinit var sleepTimerManager: SleepTimerManager
     private lateinit var bottomSheetControlsBinding: BottomSheetControlsBinding
-    private lateinit var pipControlsBinding: PipMiniControlsBinding
     private var sleepTimerMinutes = 0
 
     private var wasInBackground = false
@@ -121,6 +119,8 @@ class PlayerActivity : AppCompatActivity(),
     private var originalContentUri: Uri? = null
     private var isBottomSheetExpanded = false
     private var pendingSeekPosition: Long = -1
+    private var wasPlayingBeforePip = false
+    private var userPausedInPip = false
     
     private val surfaceCallback = object : SurfaceHolder.Callback {
         override fun surfaceCreated(holder: SurfaceHolder) {
@@ -413,26 +413,39 @@ class PlayerActivity : AppCompatActivity(),
 
     private fun setupPip() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            updatePipParams(16, 9)
+            val videoInfo = if (::playerController.isInitialized) playerController.getVideoInfo() else null
+            if (videoInfo != null && videoInfo.width > 0 && videoInfo.height > 0) {
+                updatePipParams(videoInfo.width, videoInfo.height)
+            } else {
+                updatePipParams(16, 9)
+            }
         }
     }
 
     private fun updatePipParams(width: Int, height: Int) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
+                val gcd = gcd(width, height)
+                val aspectWidth = width / gcd
+                val aspectHeight = height / gcd
                 pipParams = PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(width, height))
+                    .setAspectRatio(Rational(aspectWidth, aspectHeight))
                     .build()
+                android.util.Log.d("PlayerActivity", "Updated PiP params: ${aspectWidth}x${aspectHeight}")
             } catch (e: Exception) {
                 android.util.Log.e("PlayerActivity", "Error updating PiP params", e)
             }
         }
     }
 
-    fun enterPipMode() {
+    private fun gcd(a: Int, b: Int): Int = if (b == 0) a else gcd(b, a % b)
+
+    fun enterPipMode(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && pipParams != null) {
             enterPictureInPictureMode(pipParams!!)
+            return true
         }
+        return false
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -523,14 +536,9 @@ class PlayerActivity : AppCompatActivity(),
         slidingPaneLayout = binding.slidingPaneLayout
 
         bottomSheetControlsBinding = binding.bottomSheetControls
-        pipControlsBinding = binding.pipControlsLayout
         buttonMore = binding.buttonMore
 
         buttonMore.setOnClickListener { toggleBottomSheet() }
-
-        pipControlsBinding.buttonPipPlayPause.setOnClickListener {
-            togglePlayPause()
-        }
 
         quickListFragment = supportFragmentManager
             .findFragmentById(R.id.quickListContainer) as QuickListFragment
@@ -839,44 +847,61 @@ class PlayerActivity : AppCompatActivity(),
             binding.controlsLayout.visibility = View.GONE
             bottomSheetControlsBinding.root.visibility = View.GONE
             
-            pipControlsBinding.root.visibility = View.VISIBLE
-            
-            pipControlsBinding.buttonPipPlayPause.setImageResource(if (playerController.isPlaying()) R.drawable.ic_pause else R.drawable.ic_play)
-            
             binding.textViewSeekFeedback.visibility = View.GONE
             binding.textViewDebug.visibility = View.GONE
             
-            val params = binding.surfaceView.layoutParams
-            params.width = ViewGroup.LayoutParams.MATCH_PARENT
-            params.height = ViewGroup.LayoutParams.MATCH_PARENT
-            binding.surfaceView.layoutParams = params
-            binding.surfaceView.requestLayout()
-            
-            surfaceView.postDelayed({
-                val width = surfaceView.width
-                val height = surfaceView.height
-                android.util.Log.d("PlayerActivity", "PiP surface size: ${width}x${height}")
-                try {
-                    dev.jdtech.mpv.MPVLib.setOptionString("android-surface-size", "${width}x${height}")
-                } catch (e: Exception) {
-                    android.util.Log.e("PlayerActivity", "Error setting PiP surface size", e)
+            surfaceView.post {
+                val params = surfaceView.layoutParams
+                params.width = ViewGroup.LayoutParams.MATCH_PARENT
+                params.height = ViewGroup.LayoutParams.MATCH_PARENT
+                surfaceView.layoutParams = params
+                surfaceView.requestLayout()
+                
+                surfaceView.post {
+                    val width = surfaceView.width
+                    val height = surfaceView.height
+                    android.util.Log.d("PlayerActivity", "Entering PiP, notifying libmpv surface size: ${width}x${height}")
+                    try {
+                        dev.jdtech.mpv.MPVLib.setOptionString("android-surface-size", "${width}x${height}")
+                    } catch (e: Exception) {
+                        android.util.Log.e("PlayerActivity", "Error setting PiP surface size", e)
+                    }
                 }
-            }, 100)
+            }
         } else {
             binding.controlsLayout.visibility = View.VISIBLE
-            pipControlsBinding.root.visibility = View.GONE
-            
-            val params = binding.surfaceView.layoutParams
-            params.width = ViewGroup.LayoutParams.MATCH_PARENT
-            params.height = ViewGroup.LayoutParams.MATCH_PARENT
-            binding.surfaceView.layoutParams = params
             
             if (::playerController.isInitialized) {
-                val videoInfo = playerController.getVideoInfo()
-                if (videoInfo != null) {
-                    surfaceView.post {
+                val params = binding.surfaceView.layoutParams
+                params.width = ViewGroup.LayoutParams.MATCH_PARENT
+                params.height = ViewGroup.LayoutParams.MATCH_PARENT
+                binding.surfaceView.layoutParams = params
+                
+                surfaceView.post {
+                    val width = surfaceView.width
+                    val height = surfaceView.height
+                    android.util.Log.d("PlayerActivity", "Exiting PiP, notifying libmpv surface size: ${width}x${height}")
+                    try {
+                        dev.jdtech.mpv.MPVLib.setOptionString("android-surface-size", "${width}x${height}")
+                    } catch (e: Exception) {
+                        android.util.Log.e("PlayerActivity", "Error setting surface size", e)
+                    }
+                    
+                    val videoInfo = playerController.getVideoInfo()
+                    if (videoInfo != null) {
                         adjustSurfaceSize(videoInfo.width, videoInfo.height)
                     }
+                    
+                    if (wasPlayingBeforePip) {
+                        if (userPausedInPip || !playerController.isPlaying()) {
+                            userPausedInPip = true
+                        }
+                        if (!userPausedInPip) {
+                            playerController.play()
+                        }
+                    }
+                    wasPlayingBeforePip = false
+                    userPausedInPip = false
                 }
             }
         }
@@ -885,7 +910,13 @@ class PlayerActivity : AppCompatActivity(),
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (playerController.isPlaying()) {
-            enterPipMode()
+            wasInBackground = true
+            wasPlayingBeforePip = true
+            userPausedInPip = false
+            val success = enterPipMode()
+            if (!success) {
+                wasPlayingBeforePip = false
+            }
         }
     }
 

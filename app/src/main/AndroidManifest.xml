@@ -32,7 +32,7 @@
             android:screenOrientation="fullUser"
             android:supportsPictureInPicture="true"
             android:launchMode="singleTask"
-            android:configChanges="keyboard|keyboardHidden"
+            android:configChanges="keyboard|keyboardHidden|screenSize|smallestScreenSize|screenLayout|orientation"
             android:theme="@style/Theme.SimpleMPV.FullScreen" />
 
         <service
