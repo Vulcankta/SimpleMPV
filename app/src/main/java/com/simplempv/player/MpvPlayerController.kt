@@ -104,6 +104,8 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
             }
             
             MPVLib.setOptionString("vo", "gpu")
+            MPVLib.setOptionString("keep-aspect", "yes")
+            MPVLib.setOptionString("keep-aspect-window", "yes")
             MPVLib.setOptionString("video-zoom", "0")
             MPVLib.setOptionString("video-pan-x", "0")
             MPVLib.setOptionString("video-pan-y", "0")
@@ -367,7 +369,12 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
      * @param height New surface height
      */
     fun onSurfaceSizeChanged(width: Int, height: Int) {
-        // MPVLib handles surface changes automatically
+        try {
+            MPVLib.setOptionString("android-surface-size", "${width}x${height}")
+            Log.d(TAG, "Surface size updated: ${width}x${height}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating surface size", e)
+        }
     }
 
     /**
