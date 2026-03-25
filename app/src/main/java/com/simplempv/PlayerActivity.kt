@@ -809,7 +809,8 @@ class PlayerActivity : AppCompatActivity(),
     override fun onVideoSizeChanged(width: Int, height: Int) {
         runOnUiThread {
             if (width > 0 && height > 0) {
-                adjustSurfaceSize(width, height)
+                // Let libmpv handle video scaling via keep-aspect
+                // SurfaceView stays MATCH_PARENT for libmpv to properly center/letterbox
                 updatePipParams(width, height)
             }
         }
@@ -897,10 +898,8 @@ class PlayerActivity : AppCompatActivity(),
                         android.util.Log.e("PlayerActivity", "Error setting surface size", e)
                     }
                     
-                    val videoInfo = playerController.getVideoInfo()
-                    if (videoInfo != null) {
-                        adjustSurfaceSize(videoInfo.width, videoInfo.height)
-                    }
+                    // Let libmpv handle video scaling via keep-aspect
+                    // SurfaceView stays MATCH_PARENT for libmpv to properly center/letterbox
                     
                     if (wasPlayingBeforePip) {
                         if (userPausedInPip || !playerController.isPlaying()) {
