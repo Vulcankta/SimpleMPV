@@ -1,15 +1,14 @@
 package com.simplempv.player
 
-import android.content.ContentValues
 import android.content.Context
 import android.media.MediaScannerConnection
 import android.net.Uri
-import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
+import android.util.Log
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.Toast
@@ -18,6 +17,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Video information data class.
@@ -28,15 +28,6 @@ data class VideoInfo(
     val frameRate: Int,
     val codec: String,
     val bitrate: Int
-)
-
-data class PlayerState(
-    val currentVideoKey: String?,
-    val currentSpeed: Float,
-    val useHardwareDecoding: Boolean,
-    val savedPositions: Map<String, Long>,
-    val originalContentUri: String?,
-    val videoDuration: Long
 )
 
 /**
@@ -55,23 +46,25 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
         fun onVideoSizeChanged(width: Int, height: Int)
     }
 
-    private var callback: Callback? = null
+    private val callbackRef = AtomicReference<Callback?>(null)
     private var currentVideoKey: String? = null
     private var currentSpeed: Float = 1.0f
     private var savedPositions: MutableMap<String, Long> = mutableMapOf()
     private var currentFd: Int = -1
     private var parcelFileDescriptor: ParcelFileDescriptor? = null
     private var originalContentUri: Uri? = null
-    private var useHardwareDecoding: Boolean = false // Auto-detect: false = use software decoding
+    private var useHardwareDecoding: Boolean = false
     private var seekErrorCount: Int = 0
-    private val seekErrorThreshold: Int = 2 // Switch to software after 2 seek errors
+    private val seekErrorThreshold: Int = 2
 
     /**
      * Set the callback for player events.
      */
     fun setCallback(callback: Callback?) {
-        this.callback = callback
+        callbackRef.set(callback)
     }
+
+    private fun getCallback(): Callback? = callbackRef.get()
 
     /**
      * Set hardware decoding preference
@@ -163,7 +156,7 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
         try {
             MPVLib.setOptionString("hwdec", "no")
             useHardwareDecoding = false
-            callback?.onError("Hardware decoding unstable, switched to software decoding")
+            getCallback()?.onError("Hardware decoding unstable, switched to software decoding")
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -251,25 +244,33 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
         }
     }
 
+    private fun showToast(message: String, duration: Int = Toast.LENGTH_SHORT) {
+        try {
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(context.applicationContext, message, duration).show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to show toast", e)
+        }
+    }
+
     fun takeScreenshot(): Boolean {
         return try {
             val videoPath = currentVideoPath
-            android.util.Log.d("MpvPlayerController", "takeScreenshot: videoPath = $videoPath")
+            android.util.Log.d(TAG, "takeScreenshot: videoPath = $videoPath")
             
             if (videoPath.isNullOrEmpty()) {
-                Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(context, "Screenshot failed: no video path", Toast.LENGTH_SHORT).show()
-                }
+                showToast("Screenshot failed: no video path")
                 return false
             }
             
             val retriever = android.media.MediaMetadataRetriever()
             try {
-                android.util.Log.d("MpvPlayerController", "Setting data source: $videoPath")
+                android.util.Log.d(TAG, "Setting data source: $videoPath")
                 retriever.setDataSource(videoPath)
                 
                 val currentPosition = getCurrentTime()
-                android.util.Log.d("MpvPlayerController", "Current position: $currentPosition ms")
+                android.util.Log.d(TAG, "Current position: $currentPosition ms")
                 
                 var bitmap = retriever.getFrameAtTime(currentPosition * 1000, android.media.MediaMetadataRetriever.OPTION_CLOSEST)
                 
@@ -278,7 +279,7 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
                 }
                 
                 if (bitmap != null) {
-                    android.util.Log.d("MpvPlayerController", "Got bitmap: ${bitmap.width}x${bitmap.height}")
+                    android.util.Log.d(TAG, "Got bitmap: ${bitmap.width}x${bitmap.height}")
                     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
                     val screenshotDir = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Screenshots")
                     if (!screenshotDir.exists()) {
@@ -292,33 +293,25 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
                     }
                     bitmap.recycle()
                     
-                    android.util.Log.d("MpvPlayerController", "Screenshot saved: ${screenshotFile.absolutePath}")
-                    Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(context, "Screenshot saved: ${screenshotFile.name}", Toast.LENGTH_SHORT).show()
-                    }
+                    android.util.Log.d(TAG, "Screenshot saved: ${screenshotFile.absolutePath}")
+                    showToast("Screenshot saved: ${screenshotFile.name}")
                     scanFileToGallery(screenshotFile)
                     true
                 } else {
-                    android.util.Log.e("MpvPlayerController", "getFrameAtTime returned null")
-                    Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(context, "Screenshot failed: cannot capture frame", Toast.LENGTH_SHORT).show()
-                    }
+                    android.util.Log.e(TAG, "getFrameAtTime returned null")
+                    showToast("Screenshot failed: cannot capture frame")
                     false
                 }
             } catch (e: Exception) {
-                android.util.Log.e("MpvPlayerController", "Screenshot error", e)
-                Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(context, "Screenshot error: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                android.util.Log.e(TAG, "Screenshot error", e)
+                showToast("Screenshot error: ${e.message}")
                 false
             } finally {
                 retriever.release()
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            Handler(Looper.getMainLooper()).post {
-                Toast.makeText(context, "Screenshot error: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
+            showToast("Screenshot error: ${e.message}")
             false
         }
     }
@@ -327,10 +320,10 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
         try {
             val paths = arrayOf(file.absolutePath)
             MediaScannerConnection.scanFile(context, paths, arrayOf("image/jpeg")) { path, uri ->
-                android.util.Log.d("MpvPlayerController", "Screenshot scanned to gallery: $path -> $uri")
+                android.util.Log.d(TAG, "Screenshot scanned to gallery: $path -> $uri")
             }
         } catch (e: Exception) {
-            android.util.Log.e("MpvPlayerController", "Failed to scan screenshot to gallery", e)
+            android.util.Log.e(TAG, "Failed to scan screenshot to gallery", e)
         }
     }
 
@@ -363,7 +356,7 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
                 }
             }
         } catch (e: Exception) {
-            callback?.onError("Failed to play: ${e.message}")
+            getCallback()?.onError("Failed to play: ${e.message}")
             e.printStackTrace()
         }
     }
@@ -483,7 +476,7 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
     fun play() {
         try {
             MPVLib.setPropertyBoolean("pause", false)
-            callback?.onPlaybackStateChanged(true)
+            getCallback()?.onPlaybackStateChanged(true)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -495,7 +488,7 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
     fun pause() {
         try {
             MPVLib.setPropertyBoolean("pause", true)
-            callback?.onPlaybackStateChanged(false)
+            getCallback()?.onPlaybackStateChanged(false)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -507,7 +500,7 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
     fun stop() {
         try {
             MPVLib.command(arrayOf("stop"))
-            callback?.onPlaybackStateChanged(false)
+            getCallback()?.onPlaybackStateChanged(false)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -520,7 +513,7 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
         try {
             val playing = isPlaying()
             MPVLib.command(arrayOf("cycle", "pause"))
-            callback?.onPlaybackStateChanged(!playing)
+            getCallback()?.onPlaybackStateChanged(!playing)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -605,15 +598,15 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
     override fun event(eventId: Int) {
         when (eventId) {
             6 /* MPV_EVENT_START_FILE */ -> {
-                callback?.onPlaybackStateChanged(true)
+                getCallback()?.onPlaybackStateChanged(true)
             }
             7 /* MPV_EVENT_END_FILE */ -> {
-                callback?.onPlaybackStateChanged(false)
+                getCallback()?.onPlaybackStateChanged(false)
             }
             8 /* MPV_EVENT_FILE_LOADED */ -> {
                 val info = getVideoInfo()
                 info?.let {
-                    callback?.onVideoSizeChanged(it.width, it.height)
+                    getCallback()?.onVideoSizeChanged(it.width, it.height)
                 }
             }
         }
@@ -632,15 +625,13 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
     override fun eventProperty(property: String, value: Double) {
         when (property) {
             "time-pos" -> {
-                // mpv returns time in seconds, convert to milliseconds
                 val timeMs = (value * 1000).toLong()
                 val length = if (videoDuration > 0) videoDuration else getLength()
                 if (length > 0) {
-                    callback?.onProgressUpdate((timeMs.toFloat() / length.toFloat()), timeMs, length)
+                    getCallback()?.onProgressUpdate((timeMs.toFloat() / length.toFloat()), timeMs, length)
                 }
             }
             "duration/full" -> {
-                // Store duration in milliseconds
                 videoDuration = (value * 1000).toLong()
             }
         }
@@ -649,7 +640,7 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
     override fun eventProperty(property: String, value: Boolean) {
         when (property) {
             "pause" -> {
-                callback?.onPlaybackStateChanged(!value)
+                getCallback()?.onPlaybackStateChanged(!value)
             }
         }
     }
@@ -658,30 +649,8 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
         // Not used
     }
 
-    fun saveState(): PlayerState {
-        return PlayerState(
-            currentVideoKey = currentVideoKey,
-            currentSpeed = currentSpeed,
-            useHardwareDecoding = useHardwareDecoding,
-            savedPositions = savedPositions.toMap(),
-            originalContentUri = originalContentUri?.toString(),
-            videoDuration = videoDuration
-        )
-    }
-
-    fun restoreState(state: PlayerState) {
-        currentVideoKey = state.currentVideoKey
-        currentSpeed = state.currentSpeed
-        useHardwareDecoding = state.useHardwareDecoding
-        savedPositions = state.savedPositions.toMutableMap()
-        state.originalContentUri?.let {
-            originalContentUri = Uri.parse(it)
-        }
-        videoDuration = state.videoDuration
-    }
-
     companion object {
-        // Available playback speed options
+        private const val TAG = "MpvPlayerController"
         val SPEED_OPTIONS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
     }
 }

@@ -16,16 +16,17 @@ import com.simplempv.utils.TimeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 
 class VideoAdapter(
     private val onVideoClick: (Video) -> Unit
 ) : ListAdapter<Video, VideoAdapter.VideoViewHolder>(VideoDiffCallback()) {
-    
+
+    private val adapterScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VideoViewHolder {
         val binding = ItemVideoBinding.inflate(
             LayoutInflater.from(parent.context),
@@ -34,59 +35,78 @@ class VideoAdapter(
         )
         return VideoViewHolder(binding)
     }
-    
+
     override fun onBindViewHolder(holder: VideoViewHolder, position: Int) {
         val video = getItem(position)
-        holder.bind(video)
+        holder.bind(video, position)
         holder.setOnClickListener {
             onVideoClick(video)
         }
     }
-    
+
     class VideoViewHolder(
         private val binding: ItemVideoBinding
     ) : RecyclerView.ViewHolder(binding.root) {
-        
+
         private val context: Context = binding.root.context
-        private var viewHolderScope: CoroutineScope? = null
         private var thumbnailJob: Job? = null
+        private val bitmapLock = ReentrantLock()
         private var currentBitmap: Bitmap? = null
-        
-        private fun getOrCreateScope(): CoroutineScope {
-            return viewHolderScope ?: CoroutineScope(Dispatchers.Main + SupervisorJob()).also {
-                viewHolderScope = it
-            }
-        }
-        
+
         fun setOnClickListener(listener: (() -> Unit)?) {
             binding.root.setOnClickListener { listener?.invoke() }
         }
-        
+
+        private fun setBitmap(newBitmap: Bitmap?) {
+            bitmapLock.lock()
+            try {
+                currentBitmap?.recycle()
+                currentBitmap = newBitmap
+            } finally {
+                bitmapLock.unlock()
+            }
+        }
+
+        private fun getBitmap(): Bitmap? {
+            bitmapLock.lock()
+            return try {
+                currentBitmap
+            } finally {
+                bitmapLock.unlock()
+            }
+        }
+
         fun cancelThumbnailLoad() {
             thumbnailJob?.cancel()
             thumbnailJob = null
-            viewHolderScope?.cancel()
-            viewHolderScope = null
-            // Recycle bitmap when cancelled
-            currentBitmap?.recycle()
-            currentBitmap = null
+            bitmapLock.lock()
+            try {
+                currentBitmap?.recycle()
+                currentBitmap = null
+            } finally {
+                bitmapLock.unlock()
+            }
         }
-        
-        fun bind(video: Video) {
+
+        fun bind(video: Video, position: Int) {
             binding.textViewName.text = video.displayName
             binding.textViewDuration.text = TimeUtils.formatDuration(video.duration)
             binding.textViewSize.text = formatSize(video.size)
-            
-            loadThumbnail(video.id)
+
+            loadThumbnail(video.id, position)
         }
-        
-        private fun loadThumbnail(videoId: Long) {
+
+        private fun loadThumbnail(videoId: Long, position: Int) {
             binding.imageViewThumbnail.setImageResource(android.R.color.darker_gray)
-            
-            // Cancel previous thumbnail loading job
+
             thumbnailJob?.cancel()
-            
-            thumbnailJob = getOrCreateScope().launch {
+
+            thumbnailJob = launchThumbnailLoad(videoId, position)
+        }
+
+        private fun launchThumbnailLoad(videoId: Long, position: Int): Job {
+            val scope = VideoViewHolder.getAdapterScope()
+            return scope.launch {
                 try {
                     val thumbnail = withContext(Dispatchers.IO) {
                         MediaStore.Video.Thumbnails.getThumbnail(
@@ -96,42 +116,54 @@ class VideoAdapter(
                             null
                         )
                     }
-                    
+
                     if (thumbnail != null) {
-                        // Recycle old bitmap before setting new one
-                        currentBitmap?.recycle()
-                        currentBitmap = thumbnail
+                        setBitmap(thumbnail)
                         binding.imageViewThumbnail.setImageBitmap(thumbnail)
                     }
                 } catch (e: Exception) {
-                    // Ignore cancellation exception
                     if (e !is kotlinx.coroutines.CancellationException) {
                         Toast.makeText(context, "Thumbnail error: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
         }
-        
 
-        
         private fun formatSize(sizeBytes: Long): String {
             val mb = sizeBytes / (1024.0 * 1024.0)
             return String.format("%.1f MB", mb)
         }
+
+        companion object {
+            @Volatile
+            private var adapterScope: CoroutineScope? = null
+
+            fun setAdapterScope(scope: CoroutineScope) {
+                adapterScope = scope
+            }
+
+            fun getAdapterScope(): CoroutineScope {
+                return adapterScope ?: throw IllegalStateException("AdapterScope not initialized")
+            }
+        }
     }
-    
+
     class VideoDiffCallback : DiffUtil.ItemCallback<Video>() {
         override fun areItemsTheSame(oldItem: Video, newItem: Video): Boolean {
             return oldItem.id == newItem.id
         }
-        
+
         override fun areContentsTheSame(oldItem: Video, newItem: Video): Boolean {
             return oldItem == newItem
         }
     }
-    
+
     override fun onViewRecycled(holder: VideoViewHolder) {
         super.onViewRecycled(holder)
         holder.cancelThumbnailLoad()
+    }
+
+    init {
+        VideoViewHolder.setAdapterScope(adapterScope)
     }
 }

@@ -10,6 +10,7 @@ import android.media.session.PlaybackState
 import android.os.Binder
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.simplempv.R
@@ -20,11 +21,13 @@ class PlaybackService : Service() {
     private val binder = LocalBinder()
     private var mediaSession: MediaSession? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wakeLockAcquired = false
 
     private var isPlaying = false
     private var currentTitle = "Unknown"
 
     companion object {
+        private const val TAG = "PlaybackService"
         const val CHANNEL_ID = "simplempv_playback"
         const val NOTIFICATION_ID = 1
         const val ACTION_PLAY = "com.simplempv.ACTION_PLAY"
@@ -66,9 +69,40 @@ class PlaybackService : Service() {
 
         startForeground(NOTIFICATION_ID, buildNotification())
 
-        wakeLock?.acquire(30 * 60 * 1000L)
+        acquireWakeLockSafely()
 
         return START_STICKY
+    }
+
+    private fun acquireWakeLockSafely() {
+        if (wakeLock != null && !wakeLockAcquired) {
+            try {
+                if (wakeLock?.isHeld == false) {
+                    wakeLock?.acquire(30 * 60 * 1000L)
+                    wakeLockAcquired = true
+                }
+            } catch (e: IllegalStateException) {
+                Log.e(TAG, "Failed to acquire wake lock", e)
+            }
+        }
+    }
+
+    private fun releaseWakeLockSafely() {
+        if (wakeLock != null && wakeLockAcquired) {
+            try {
+                if (wakeLock?.isHeld == true) {
+                    wakeLock?.release()
+                }
+                wakeLockAcquired = false
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to release wake lock", e)
+            }
+        }
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        releaseWakeLockSafely()
     }
 
     private fun createNotificationChannel() {
@@ -227,9 +261,7 @@ class PlaybackService : Service() {
     }
 
     override fun onDestroy() {
-        wakeLock?.let {
-            if (it.isHeld) it.release()
-        }
+        releaseWakeLockSafely()
         mediaSession?.release()
         mediaSession = null
         super.onDestroy()

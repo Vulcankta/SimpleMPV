@@ -121,6 +121,32 @@ class PlayerActivity : AppCompatActivity(),
     private var pendingSeekPosition: Long = -1
     private var wasPlayingBeforePip = false
     private var userPausedInPip = false
+
+    private val hideFeedbackRunnable = Runnable {
+        textViewDebug.visibility = View.GONE
+    }
+
+    private val surfaceReattachRunnable = Runnable {
+        if (pendingSeekPosition > 0) {
+            playerController.seekTo(pendingSeekPosition)
+            surfaceView.postDelayed({
+                val actualPosition = playerController.getCurrentTime()
+                if (kotlin.math.abs(actualPosition - pendingSeekPosition) > 1000) {
+                    android.util.Log.d("PlayerActivity", "Seek may have failed, retrying. Expected: $pendingSeekPosition, Actual: $actualPosition")
+                    playerController.seekTo(pendingSeekPosition)
+                }
+                pendingSeekPosition = -1
+            }, 500)
+        }
+        playerController.play()
+        android.util.Log.d("PlayerActivity", "Video resumed at position: ${playerController.getCurrentTime()}")
+    }
+
+    private fun clearAllPlayerCallbacks() {
+        handler.removeCallbacks(hideFeedbackRunnable)
+        handler.removeCallbacks(surfaceReattachRunnable)
+        surfaceView.removeCallbacks(surfaceReattachRunnable)
+    }
     
     private val surfaceCallback = object : SurfaceHolder.Callback {
         override fun surfaceCreated(holder: SurfaceHolder) {
@@ -130,6 +156,8 @@ class PlayerActivity : AppCompatActivity(),
 
             if (wasInBackground || wasConfigurationChange) {
                 android.util.Log.d("PlayerActivity", "Reattaching surface after background or config change: wasInBackground=$wasInBackground, wasConfigChange=$wasConfigurationChange")
+                
+                clearAllPlayerCallbacks()
                 
                 try {
                     dev.jdtech.mpv.MPVLib.attachSurface(holder.surface)
@@ -149,21 +177,7 @@ class PlayerActivity : AppCompatActivity(),
                     android.util.Log.e("PlayerActivity", "Failed to reattach surface", e)
                 }
                 
-                surfaceView.postDelayed({
-                    if (pendingSeekPosition > 0) {
-                        playerController.seekTo(pendingSeekPosition)
-                        surfaceView.postDelayed({
-                            val actualPosition = playerController.getCurrentTime()
-                            if (kotlin.math.abs(actualPosition - pendingSeekPosition) > 1000) {
-                                android.util.Log.d("PlayerActivity", "Seek may have failed, retrying. Expected: $pendingSeekPosition, Actual: $actualPosition")
-                                playerController.seekTo(pendingSeekPosition)
-                            }
-                            pendingSeekPosition = -1
-                        }, 500)
-                    }
-                    playerController.play()
-                    android.util.Log.d("PlayerActivity", "Video resumed at position: ${playerController.getCurrentTime()}")
-                }, 1000)
+                surfaceView.postDelayed(surfaceReattachRunnable, 1000)
                 
                 wasInBackground = false
                 wasConfigurationChange = false
@@ -405,10 +419,6 @@ class PlayerActivity : AppCompatActivity(),
         textViewDebug.visibility = View.VISIBLE
         handler.removeCallbacks(hideFeedbackRunnable)
         handler.postDelayed(hideFeedbackRunnable, 1500)
-    }
-
-    private val hideFeedbackRunnable = Runnable {
-        textViewDebug.visibility = View.GONE
     }
 
     private fun setupPip() {
@@ -975,12 +985,15 @@ class PlayerActivity : AppCompatActivity(),
         if (::progressUpdater.isInitialized) {
             progressUpdater.stop()
         }
-        handler.removeCallbacks(hideFeedbackRunnable)
-        handler.removeCallbacksAndMessages(null)
+        clearAllPlayerCallbacks()
         surfaceView.holder.removeCallback(surfaceCallback)
         playerController.release()
         if (serviceBound) {
-            unbindService(serviceConnection)
+            try {
+                unbindService(serviceConnection)
+            } catch (e: IllegalArgumentException) {
+                Log.e("PlayerActivity", "Service was not bound when unbindService was called", e)
+            }
             serviceBound = false
         }
         sleepTimerManager.cancel()

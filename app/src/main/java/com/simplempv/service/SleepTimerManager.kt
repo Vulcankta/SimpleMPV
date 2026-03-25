@@ -46,7 +46,7 @@ class SleepTimerManager(private val handler: Handler) {
 
     fun isRunning(): Boolean = isTimerRunning
 
-    fun getRemainingMinutes(): Int = (remainingTimeMillis / 60_000).toInt()
+    fun getRemainingMinutes(): Int = ((remainingTimeMillis + 59_999) / 60_000).toInt()
 
     fun getRemainingTimeString(): String {
         val minutes = getRemainingMinutes()
