@@ -130,6 +130,66 @@
                     android:contentDescription="Video list" />
 
                 <ImageButton
+                    android:id="@+id/buttonSpeed_port"
+                    android:layout_width="@dimen/button_size_secondary"
+                    android:layout_height="@dimen/button_size_secondary"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_speed"
+                    app:tint="@android:color/white"
+                    android:contentDescription="Playback speed"
+                    android:visibility="gone" />
+
+                <ImageButton
+                    android:id="@+id/buttonDecoding_port"
+                    android:layout_width="@dimen/button_size_secondary"
+                    android:layout_height="@dimen/button_size_secondary"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_decoding"
+                    app:tint="@android:color/white"
+                    android:contentDescription="Decoding mode"
+                    android:visibility="gone" />
+
+                <ImageButton
+                    android:id="@+id/buttonSnapshot_port"
+                    android:layout_width="@dimen/button_size_secondary"
+                    android:layout_height="@dimen/button_size_secondary"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_screenshot"
+                    app:tint="@android:color/white"
+                    android:contentDescription="Take screenshot"
+                    android:visibility="gone" />
+
+                <ImageButton
+                    android:id="@+id/buttonSleepTimer_port"
+                    android:layout_width="@dimen/button_size_secondary"
+                    android:layout_height="@dimen/button_size_secondary"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_timer"
+                    app:tint="@android:color/white"
+                    android:contentDescription="Sleep timer"
+                    android:visibility="gone" />
+
+                <ImageButton
+                    android:id="@+id/buttonBookmark_port"
+                    android:layout_width="@dimen/button_size_secondary"
+                    android:layout_height="@dimen/button_size_secondary"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_bookmark"
+                    app:tint="@android:color/white"
+                    android:contentDescription="Bookmarks"
+                    android:visibility="gone" />
+
+                <ImageButton
+                    android:id="@+id/buttonInfo_port"
+                    android:layout_width="@dimen/button_size_secondary"
+                    android:layout_height="@dimen/button_size_secondary"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_info"
+                    app:tint="@android:color/white"
+                    android:contentDescription="Video info"
+                    android:visibility="gone" />
+
+                <ImageButton
                     android:id="@+id/buttonMore"
                     android:layout_width="@dimen/button_size_secondary"
                     android:layout_height="@dimen/button_size_secondary"

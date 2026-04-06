@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.media.AudioManager
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -111,6 +112,12 @@ class PlayerActivity : AppCompatActivity(),
     private lateinit var buttonSleepTimer: ImageButton
     private lateinit var buttonBookmark: ImageButton
     private lateinit var buttonMore: ImageButton
+    private var buttonSpeedPort: ImageButton? = null
+    private var buttonDecodingPort: ImageButton? = null
+    private var buttonSnapshotPort: ImageButton? = null
+    private var buttonSleepTimerPort: ImageButton? = null
+    private var buttonBookmarkPort: ImageButton? = null
+    private var buttonInfoPort: ImageButton? = null
     private lateinit var sleepTimerManager: SleepTimerManager
     private lateinit var bottomSheetControlsBinding: BottomSheetControlsBinding
     private var sleepTimerMinutes = 0
@@ -129,6 +136,7 @@ class PlayerActivity : AppCompatActivity(),
     }
 
     private val surfaceReattachRunnable = Runnable {
+        if (!::playerController.isInitialized) return@Runnable
         if (pendingSeekPosition > 0) {
             playerController.seekTo(pendingSeekPosition)
             surfaceView.postDelayed({
@@ -416,6 +424,25 @@ class PlayerActivity : AppCompatActivity(),
         isBottomSheetExpanded = false
     }
 
+    private fun updateControlsLayout(isLandscape: Boolean) {
+        if (!::buttonSpeed.isInitialized) return
+        
+        val landscapeButtons = listOf(buttonSpeed, buttonDecoding, buttonSnapshot, 
+            buttonSleepTimer, buttonBookmark, buttonInfo)
+        val portraitButtons = listOf(buttonSpeedPort, buttonDecodingPort, buttonSnapshotPort,
+            buttonSleepTimerPort, buttonBookmarkPort, buttonInfoPort)
+        
+        landscapeButtons.forEach { it.visibility = if (isLandscape) View.VISIBLE else View.GONE }
+        portraitButtons.forEach { it?.visibility = if (isLandscape) View.GONE else View.VISIBLE }
+        buttonMore.visibility = if (isLandscape) View.GONE else View.VISIBLE
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val isLandscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
+        updateControlsLayout(isLandscape)
+    }
+
     private fun showFeedback(message: String) {
         textViewDebug.text = message
         textViewDebug.visibility = View.VISIBLE
@@ -466,6 +493,7 @@ class PlayerActivity : AppCompatActivity(),
         setContentView(binding.root)
 
         initViews()
+        updateControlsLayout(resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
         setupBackPressHandler()
         setupPip()
 
@@ -556,6 +584,24 @@ class PlayerActivity : AppCompatActivity(),
         buttonMore = binding.buttonMore
 
         buttonMore.setOnClickListener { toggleBottomSheet() }
+
+        buttonSpeedPort = binding.root.findViewById(R.id.buttonSpeed_port)
+        buttonDecodingPort = binding.root.findViewById(R.id.buttonDecoding_port)
+        buttonSnapshotPort = binding.root.findViewById(R.id.buttonSnapshot_port)
+        buttonSleepTimerPort = binding.root.findViewById(R.id.buttonSleepTimer_port)
+        buttonBookmarkPort = binding.root.findViewById(R.id.buttonBookmark_port)
+        buttonInfoPort = binding.root.findViewById(R.id.buttonInfo_port)
+
+        buttonSpeedPort?.setOnClickListener { showSpeedMenu() }
+        buttonDecodingPort?.setOnClickListener { toggleDecodeMode() }
+        buttonDecodingPort?.setOnLongClickListener {
+            showDecodingMenu()
+            true
+        }
+        buttonSnapshotPort?.setOnClickListener { takeSnapshot() }
+        buttonSleepTimerPort?.setOnClickListener { showSleepTimerMenu() }
+        buttonBookmarkPort?.setOnClickListener { showBookmarksMenu() }
+        buttonInfoPort?.setOnClickListener { showVideoInfo() }
 
         quickListFragment = supportFragmentManager
             .findFragmentById(R.id.quickListContainer) as QuickListFragment
