@@ -42,6 +42,7 @@ import com.simplempv.player.MpvPlayerController
 import com.simplempv.player.PlaybackStateManager
 import com.simplempv.player.ProgressUpdater
 import com.simplempv.repository.BookmarkRepository
+import com.simplempv.repository.PlaybackHistoryRepository
 import com.simplempv.repository.VideoRepository
 import com.simplempv.service.PlaybackService
 import com.simplempv.service.SleepTimerManager
@@ -55,6 +56,7 @@ class PlayerActivity : AppCompatActivity(),
 
     private lateinit var playerController: MpvPlayerController
     private lateinit var playbackStateManager: PlaybackStateManager
+    private lateinit var playbackHistoryRepository: PlaybackHistoryRepository
     private var videoRepository: VideoRepository? = null
     private lateinit var bookmarkRepository: BookmarkRepository
     private lateinit var binding: ActivityPlayerBinding
@@ -470,6 +472,7 @@ class PlayerActivity : AppCompatActivity(),
         playerController = MpvPlayerController(this)
         playerController.setCallback(this)
         playbackStateManager = PlaybackStateManager(this, playerController)
+        playbackHistoryRepository = PlaybackHistoryRepository(this)
         bookmarkRepository = BookmarkRepository(this)
 
         if (!playerController.setupPlayer()) {
@@ -537,7 +540,11 @@ class PlayerActivity : AppCompatActivity(),
         buttonInfo = binding.root.findViewById(R.id.buttonInfo)
         buttonInfo.setOnClickListener { showVideoInfo() }
         buttonDecoding = binding.root.findViewById(R.id.buttonDecoding)
-        buttonDecoding.setOnClickListener { showDecodingMenu() }
+        buttonDecoding.setOnClickListener { toggleDecodeMode() }
+        buttonDecoding.setOnLongClickListener {
+            showDecodingMenu()
+            true
+        }
         buttonSleepTimer = binding.root.findViewById(R.id.buttonSleepTimer)
         buttonSleepTimer.setOnClickListener { showSleepTimerMenu() }
         buttonBookmark = binding.root.findViewById(R.id.buttonBookmark)
@@ -664,6 +671,11 @@ class PlayerActivity : AppCompatActivity(),
         videoRepository = VideoRepository(this)
         videoList = videoRepository?.getVideos() ?: emptyList()
         quickListFragment.setVideos(videoList)
+
+        val resumePositions = videoList.associate { video ->
+            video.uri.toString() to playbackHistoryRepository.getPosition(video.uri.toString())
+        }
+        quickListFragment.setResumePositions(resumePositions, notify = false)
 
         currentPosition = intent.getIntExtra(EXTRA_VIDEO_POSITION, 0)
 
@@ -1077,20 +1089,44 @@ class PlayerActivity : AppCompatActivity(),
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 0 -> {
-                    // Force software decoding using cycle-values (cycles to "no")
-                    playerController.cycleDecodingMode()
-                    playerController.cycleDecodingMode() // Call twice to ensure it's set to "no"
+                    // Force software decoding - only toggle if currently in hardware mode
+                    if (playerController.isUsingHardwareDecoding()) {
+                        playerController.cycleDecodingMode()
+                    }
                     Toast.makeText(this, R.string.hw_decoding_disabled, Toast.LENGTH_SHORT).show()
                 }
                 1 -> {
-                    // Force hardware decoding using cycle-values (cycles to mediacodec)
-                    playerController.cycleDecodingMode()
+                    // Force hardware decoding - only toggle if currently in software mode
+                    if (!playerController.isUsingHardwareDecoding()) {
+                        playerController.cycleDecodingMode()
+                    }
                     Toast.makeText(this, R.string.hw_decoding_enabled, Toast.LENGTH_SHORT).show()
                 }
             }
+            updateDecodeButtonIcon()
             true
         }
         popup.show()
+    }
+
+    private fun toggleDecodeMode() {
+        playerController.cycleDecodingMode()
+        updateDecodeButtonIcon()
+        val message = if (playerController.isUsingHardwareDecoding()) {
+            R.string.hw_decoding_enabled
+        } else {
+            R.string.hw_decoding_disabled
+        }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun updateDecodeButtonIcon() {
+        val iconRes = if (playerController.isUsingHardwareDecoding()) {
+            R.drawable.ic_decode_hardware
+        } else {
+            R.drawable.ic_decode_software
+        }
+        buttonDecoding.setImageResource(iconRes)
     }
 
     private fun showVideoInfo() {
@@ -1199,7 +1235,7 @@ class PlayerActivity : AppCompatActivity(),
             return
         }
 
-        val items = bookmarks.map { "${it.label} - ${formatTime(it.position)}" }.toTypedArray()
+        val items = bookmarks.map { formatBookmarkDisplay(it) }.toTypedArray()
 
         AlertDialog.Builder(this)
             .setTitle("书签列表")
@@ -1209,10 +1245,30 @@ class PlayerActivity : AppCompatActivity(),
                 showFeedback("跳转到 ${formatTime(bookmark.position)}")
             }
             .setPositiveButton("添加当前书签") { _, _ -> showAddBookmarkDialog() }
-            .setNeutralButton("删除") { _, _ ->
+            .setNeutralButton("编辑") { _, _ ->
+                showSelectBookmarkToEditDialog(bookmarks)
+            }
+            .setNegativeButton("删除") { _, _ ->
                 showDeleteBookmarkDialog(videoUri, bookmarks)
             }
-            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun showSelectBookmarkToEditDialog(bookmarks: List<BookmarkRepository.Bookmark>) {
+        if (bookmarks.isEmpty()) {
+            Toast.makeText(this, "暂无书签可编辑", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val items = bookmarks.map { formatBookmarkDisplay(it) }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("选择要编辑的书签")
+            .setItems(items) { _, which ->
+                val bookmark = bookmarks[which]
+                showEditBookmarkDialog(bookmark)
+            }
+            .setNegativeButton("取消", null)
             .show()
     }
 
@@ -1222,7 +1278,7 @@ class PlayerActivity : AppCompatActivity(),
             return
         }
 
-        val items = bookmarks.map { "${it.label} - ${formatTime(it.position)}" }.toTypedArray()
+        val items = bookmarks.map { formatBookmarkDisplay(it) }.toTypedArray()
 
         AlertDialog.Builder(this)
             .setTitle("选择要删除的书签")
@@ -1233,6 +1289,53 @@ class PlayerActivity : AppCompatActivity(),
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    private fun showEditBookmarkDialog(bookmark: BookmarkRepository.Bookmark) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_edit_bookmark, null)
+        val editTextLabel = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.editTextLabel)
+        val seekBarPosition = dialogView.findViewById<android.widget.SeekBar>(R.id.seekBarPosition)
+        val textViewTime = dialogView.findViewById<android.widget.TextView>(R.id.textViewTime)
+
+        editTextLabel.setText(bookmark.label)
+
+        val videoDuration = playerController.getLength()
+        seekBarPosition.max = videoDuration.toInt()
+        seekBarPosition.progress = bookmark.position.toInt()
+        textViewTime.text = formatTime(bookmark.position)
+
+        seekBarPosition.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                textViewTime.text = formatTime(progress.toLong())
+            }
+            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+        })
+
+        AlertDialog.Builder(this)
+            .setTitle("编辑书签")
+            .setView(dialogView)
+            .setPositiveButton("保存") { _, _ ->
+                val newLabel = editTextLabel.text?.toString()?.trim()
+                val newPosition = seekBarPosition.progress.toLong()
+                val videoUri = intent.getStringExtra(EXTRA_VIDEO_URI) ?: return@setPositiveButton
+
+                if (!newLabel.isNullOrEmpty()) {
+                    bookmarkRepository.updateBookmark(
+                        videoUri,
+                        bookmark.position,
+                        newPosition,
+                        newLabel
+                    )
+                    showFeedback("书签已更新")
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun formatBookmarkDisplay(bookmark: BookmarkRepository.Bookmark): String {
+        return "${bookmark.label} - ${formatTime(bookmark.position)}"
     }
 
     private fun formatTime(timeMs: Long): String {

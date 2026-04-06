@@ -67,6 +67,20 @@ class BookmarkRepository(context: Context) {
         saveBookmarks(videoUri, bookmarks)
     }
 
+    fun updateBookmark(videoUri: String, oldPosition: Long, newPosition: Long?, newLabel: String?) {
+        val bookmarks = getBookmarks(videoUri).map { bookmark ->
+            if (bookmark.position == oldPosition) {
+                bookmark.copy(
+                    position = newPosition ?: bookmark.position,
+                    label = newLabel ?: bookmark.label
+                )
+            } else {
+                bookmark
+            }
+        }
+        saveBookmarks(videoUri, bookmarks)
+    }
+
     fun removeAllBookmarks(videoUri: String) {
         prefs.edit().remove(getKey(videoUri)).apply()
     }

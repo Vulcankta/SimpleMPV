@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.simplempv.adapter.QuickListAdapter
 import com.simplempv.databinding.FragmentQuickListBinding
 import com.simplempv.model.Video
+import com.simplempv.repository.PlaybackHistoryRepository
 
 class QuickListFragment : Fragment() {
 
@@ -173,6 +174,12 @@ class QuickListFragment : Fragment() {
     fun setCurrentVideo(uri: String?) {
         if (::adapter.isInitialized) {
             adapter.setCurrentVideo(uri)
+        }
+    }
+
+    fun setResumePositions(positions: Map<String, Long>, notify: Boolean = true) {
+        if (::adapter.isInitialized) {
+            adapter.setResumePositions(positions, notify)
         }
     }
 

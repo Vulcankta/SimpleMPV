@@ -1,7 +1,6 @@
 package com.simplempv.player
 
 import android.content.Context
-import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Environment
 import android.os.Handler
@@ -14,9 +13,6 @@ import android.view.SurfaceView
 import android.widget.Toast
 import dev.jdtech.mpv.MPVLib
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -258,74 +254,19 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
 
     fun takeScreenshot(): Boolean {
         return try {
-            val videoPath = currentVideoPath
-            android.util.Log.d(TAG, "takeScreenshot: videoPath = $videoPath")
-            
-            if (videoPath.isNullOrEmpty()) {
-                showToast("Screenshot failed: no video path")
+            if (currentVideoPath.isNullOrEmpty()) {
+                showToast("Screenshot failed: no video loaded")
                 return false
             }
             
-            val retriever = android.media.MediaMetadataRetriever()
-            try {
-                android.util.Log.d(TAG, "Setting data source: $videoPath")
-                retriever.setDataSource(videoPath)
-                
-                val currentPosition = getCurrentTime()
-                android.util.Log.d(TAG, "Current position: $currentPosition ms")
-                
-                var bitmap = retriever.getFrameAtTime(currentPosition * 1000, android.media.MediaMetadataRetriever.OPTION_CLOSEST)
-                
-                if (bitmap == null) {
-                    bitmap = retriever.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                }
-                
-                if (bitmap != null) {
-                    android.util.Log.d(TAG, "Got bitmap: ${bitmap.width}x${bitmap.height}")
-                    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                    val screenshotDir = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Screenshots")
-                    if (!screenshotDir.exists()) {
-                        screenshotDir.mkdirs()
-                    }
-                    val filename = "SimpleMPV_$timestamp.jpg"
-                    val screenshotFile = File(screenshotDir, filename)
-                    
-                    screenshotFile.outputStream().use { out ->
-                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)
-                    }
-                    bitmap.recycle()
-                    
-                    android.util.Log.d(TAG, "Screenshot saved: ${screenshotFile.absolutePath}")
-                    showToast("Screenshot saved: ${screenshotFile.name}")
-                    scanFileToGallery(screenshotFile)
-                    true
-                } else {
-                    android.util.Log.e(TAG, "getFrameAtTime returned null")
-                    showToast("Screenshot failed: cannot capture frame")
-                    false
-                }
-            } catch (e: Exception) {
-                android.util.Log.e(TAG, "Screenshot error", e)
-                showToast("Screenshot error: ${e.message}")
-                false
-            } finally {
-                retriever.release()
-            }
+            android.util.Log.d(TAG, "takeScreenshot: using mpv native screenshot command")
+            MPVLib.command(arrayOf("screenshot"))
+            showToast("截图已保存")
+            true
         } catch (e: Exception) {
-            e.printStackTrace()
-            showToast("Screenshot error: ${e.message}")
+            android.util.Log.e(TAG, "Screenshot error", e)
+            showToast("截图失败: ${e.message}")
             false
-        }
-    }
-    
-    private fun scanFileToGallery(file: File) {
-        try {
-            val paths = arrayOf(file.absolutePath)
-            MediaScannerConnection.scanFile(context, paths, arrayOf("image/jpeg")) { path, uri ->
-                android.util.Log.d(TAG, "Screenshot scanned to gallery: $path -> $uri")
-            }
-        } catch (e: Exception) {
-            android.util.Log.e(TAG, "Failed to scan screenshot to gallery", e)
         }
     }
 
