@@ -112,12 +112,6 @@ class PlayerActivity : AppCompatActivity(),
     private lateinit var buttonSleepTimer: ImageButton
     private lateinit var buttonBookmark: ImageButton
     private lateinit var buttonMore: ImageButton
-    private var buttonSpeedPort: ImageButton? = null
-    private var buttonDecodingPort: ImageButton? = null
-    private var buttonSnapshotPort: ImageButton? = null
-    private var buttonSleepTimerPort: ImageButton? = null
-    private var buttonBookmarkPort: ImageButton? = null
-    private var buttonInfoPort: ImageButton? = null
     private lateinit var sleepTimerManager: SleepTimerManager
     private lateinit var bottomSheetControlsBinding: BottomSheetControlsBinding
     private var sleepTimerMinutes = 0
@@ -425,16 +419,8 @@ class PlayerActivity : AppCompatActivity(),
     }
 
     private fun updateControlsLayout(isLandscape: Boolean) {
-        if (!::buttonSpeed.isInitialized) return
-        
-        val landscapeButtons = listOf(buttonSpeed, buttonDecoding, buttonSnapshot, 
-            buttonSleepTimer, buttonBookmark, buttonInfo)
-        val portraitButtons = listOf(buttonSpeedPort, buttonDecodingPort, buttonSnapshotPort,
-            buttonSleepTimerPort, buttonBookmarkPort, buttonInfoPort)
-        
-        landscapeButtons.forEach { it.visibility = if (isLandscape) View.VISIBLE else View.GONE }
-        portraitButtons.forEach { it?.visibility = if (isLandscape) View.GONE else View.VISIBLE }
-        buttonMore.visibility = if (isLandscape) View.GONE else View.VISIBLE
+        // 佈局已統一，此處可擴展未來的佈局調整邏輯
+        // 如需根據屏幕方向隱藏某些按鈕，可在此處添加
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -510,6 +496,9 @@ class PlayerActivity : AppCompatActivity(),
             return
         }
 
+        // 初始化解碼按鈕圖標
+        updateDecodeButtonIcon()
+
         progressUpdater = ProgressUpdater(
             handler = handler,
             seekBar = seekBar,
@@ -584,24 +573,6 @@ class PlayerActivity : AppCompatActivity(),
         buttonMore = binding.buttonMore
 
         buttonMore.setOnClickListener { toggleBottomSheet() }
-
-        buttonSpeedPort = binding.root.findViewById(R.id.buttonSpeed_port)
-        buttonDecodingPort = binding.root.findViewById(R.id.buttonDecoding_port)
-        buttonSnapshotPort = binding.root.findViewById(R.id.buttonSnapshot_port)
-        buttonSleepTimerPort = binding.root.findViewById(R.id.buttonSleepTimer_port)
-        buttonBookmarkPort = binding.root.findViewById(R.id.buttonBookmark_port)
-        buttonInfoPort = binding.root.findViewById(R.id.buttonInfo_port)
-
-        buttonSpeedPort?.setOnClickListener { showSpeedMenu() }
-        buttonDecodingPort?.setOnClickListener { toggleDecodeMode() }
-        buttonDecodingPort?.setOnLongClickListener {
-            showDecodingMenu()
-            true
-        }
-        buttonSnapshotPort?.setOnClickListener { takeSnapshot() }
-        buttonSleepTimerPort?.setOnClickListener { showSleepTimerMenu() }
-        buttonBookmarkPort?.setOnClickListener { showBookmarksMenu() }
-        buttonInfoPort?.setOnClickListener { showVideoInfo() }
 
         quickListFragment = supportFragmentManager
             .findFragmentById(R.id.quickListContainer) as QuickListFragment
@@ -761,7 +732,9 @@ class PlayerActivity : AppCompatActivity(),
             val fileUri = playerController.filePathToUri(filePath)
 
             if (surfaceView.holder.surface.isValid) {
-                playerController.attachAndPlay(fileUri, surfaceView.holder, surfaceView, playbackStateManager.getCurrentVideoKey())
+                // 使用與 PlaybackStateManager 一致的 videoKey
+                val videoKey = playbackStateManager.getCurrentVideoKey() ?: filePath
+                playerController.attachAndPlay(fileUri, surfaceView.holder, surfaceView, videoKey)
                 progressUpdater.start()
             } else {
                 pendingFdUri = fileUri
@@ -788,7 +761,9 @@ class PlayerActivity : AppCompatActivity(),
             }
 
             if (surfaceView.holder.surface.isValid) {
-                playerController.attachAndPlay(fdUri, surfaceView.holder, surfaceView, playbackStateManager.getCurrentVideoKey())
+                // 使用與 PlaybackStateManager 一致的 videoKey
+                val videoKey = playbackStateManager.getCurrentVideoKey() ?: contentUriString
+                playerController.attachAndPlay(fdUri, surfaceView.holder, surfaceView, videoKey)
                 progressUpdater.start()
             } else {
                 pendingFdUri = fdUri

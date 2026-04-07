@@ -19,7 +19,10 @@ class PlaybackStateManager(
 
         val position = if (key != null) historyRepository.getPosition(key) else 0L
         savedPosition = position
-        playerController.setSavedPosition(position)
+        // 使用帶 key 的版本，避免依賴調用順序
+        if (key != null) {
+            playerController.setSavedPosition(key, position)
+        }
     }
 
     fun getCurrentVideoKey(): String? = currentVideoKey
@@ -34,7 +37,7 @@ class PlaybackStateManager(
         currentVideoKey?.let { key ->
             historyRepository.savePosition(key, currentTime)
             savedPosition = currentTime
-            playerController.setSavedPosition(currentTime)
+            playerController.setSavedPosition(key, currentTime)
         }
     }
 
@@ -42,20 +45,22 @@ class PlaybackStateManager(
         historyRepository.savePosition(key, time)
         if (key == currentVideoKey) {
             savedPosition = time
-            playerController.setSavedPosition(time)
+            playerController.setSavedPosition(key, time)
         }
     }
 
     fun setSavedPosition(position: Long) {
         savedPosition = position
-        playerController.setSavedPosition(position)
+        currentVideoKey?.let { key ->
+            playerController.setSavedPosition(key, position)
+        }
     }
 
     fun clearPosition(key: String) {
         historyRepository.clearPosition(key)
         if (key == currentVideoKey) {
             savedPosition = 0
-            playerController.setSavedPosition(0)
+            playerController.setSavedPosition(key, 0)
         }
     }
 

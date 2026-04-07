@@ -39,7 +39,7 @@
             android:layout_height="@dimen/button_size_secondary"
             android:layout_columnWeight="1"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_decoding"
+            android:src="@drawable/ic_decode_software"
             app:tint="@android:color/white"
             android:contentDescription="Decoding mode" />
 

@@ -52,6 +52,12 @@ class QuickListFragment : Fragment() {
 
         setupRecyclerView()
         setupSearch()
+
+        // 如果已有數據（在onCreateView之前被調用setVideos），立即提交
+        if (fullVideoList.isNotEmpty()) {
+            adapter.submitFullList(fullVideoList)
+            updateEmptyState(false, "")
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

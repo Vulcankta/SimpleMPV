@@ -52,6 +52,7 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
     private var useHardwareDecoding: Boolean = false
     private var seekErrorCount: Int = 0
     private val seekErrorThreshold: Int = 2
+    private var fileLoaded: Boolean = false
 
     /**
      * Set the callback for player events.
@@ -277,10 +278,11 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
      * @param videoSurface The SurfaceView for video display
      * @param videoKey Optional video key to look up saved position. If null, uses currentVideoKey.
      */
-    fun attachAndPlay(uri: Uri, surfaceHolder: SurfaceHolder, videoSurface: SurfaceView, videoKey: String?) {
+    fun attachAndPlay(uri: Uri, surfaceHolder: SurfaceHolder, videoSurface: SurfaceView, videoKey: String?, resumePositionMs: Long = -1) {
         val key = videoKey ?: currentVideoKey
         setCurrentVideoKey(key)
         currentPlayingUri = uri
+        fileLoaded = false
 
         try {
             val surface = surfaceHolder.surface
@@ -289,14 +291,26 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
             }
 
             val uriString = uri.toString()
+            
+            // 檢查是否需要從指定位置開始
+            val positionToResume = if (resumePositionMs > 0) {
+                resumePositionMs
+            } else {
+                key?.let { getSavedPosition(it) } ?: 0L
+            }
+            
+            if (positionToResume > 0) {
+                // 方案：使用 MPV 的 start 選項直接從指定位置開始
+                // 這樣視頻會直接從該位置解碼，不會閃爍
+                val startSeconds = (positionToResume / 1000.0).toString()
+                MPVLib.setOptionString("start", startSeconds)
+            }
+            
             MPVLib.command(arrayOf("loadfile", uriString))
-
-            // Restore saved position if available
-            key?.let {
-                val position = getSavedPosition(it)
-                if (position > 0) {
-                    MPVLib.command(arrayOf("seek", position.toString(), "absolute"))
-                }
+            
+            // 清除 start 選項，避免影響後續播放
+            if (positionToResume > 0) {
+                MPVLib.setOptionString("start", "")
             }
         } catch (e: Exception) {
             getCallback()?.onError("Failed to play: ${e.message}")
@@ -371,6 +385,13 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
         currentVideoKey?.let {
             savedPositions[it] = position
         }
+    }
+
+    /**
+     * Set saved playback position for a specific video key.
+     */
+    fun setSavedPosition(key: String, position: Long) {
+        savedPositions[key] = position
     }
 
     /**
@@ -485,6 +506,8 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
      */
     fun setCurrentVideoKey(key: String?) {
         currentVideoKey = key
+        // 重置狀態，因為新視頻即將加載
+        fileLoaded = false
     }
 
     /**
@@ -552,6 +575,7 @@ class MpvPlayerController(private val context: Context) : MPVLib.EventObserver {
                 getCallback()?.onPlaybackStateChanged(false)
             }
             8 /* MPV_EVENT_FILE_LOADED */ -> {
+                fileLoaded = true
                 val info = getVideoInfo()
                 info?.let {
                     getCallback()?.onVideoSizeChanged(it.width, it.height)
